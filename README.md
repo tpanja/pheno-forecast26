@@ -1,0 +1,191 @@
+# Spatiotemporal Acer Pollen Forecasting
+
+Code for the paper's 7-day-ahead forecasts of maple (*Acer*) pollen at 15 US
+stations. It compares two LightGBM models, **veg+meteo** (weather + MODIS
+NDVI/EVI) and **meteo** (weather only), against two benchmarks: climatology and
+7-day persistence.
+
+All scripts are R and use paths relative to this folder, so **run every script
+with `all_code/` as the working directory**.
+
+## Pipeline
+
+Run the steps in this order:
+
+| Step | Script | What it does | Main outputs |
+|---|---|---|---|
+| 1 | `1_data_organization.R` | Smooths daily pollen, downloads Daymet weather, loads MODIS NDVI/EVI and builds lagged features with a 7-day forecast buffer | `data/processed/pollen_weather_smoothed.csv`, `cache_*.rds` |
+| 1b | `1b_static_features.R` | Adds station elevation | updates `pollen_weather_smoothed.csv`, `station_static_features.csv` |
+| 2 | `2_feature_selection.R` | Log-transforms the target and splits by year | `data/processed/train_data_base.csv` (2003–2017), `test_data_base.csv` (2018–2022) |
+| 3 | `benchmarks/benchmark_climatology_model.R` | Day-of-year climatology benchmark | `benchmarks/results/climatology/` |
+| 3 | `benchmarks/benchmark_persistence_model.R` | Persistence benchmark (7, 14 and 30 days) | `benchmarks/results/persistence/` |
+| 4 | `base_models/lightgbm/tune_lightgbm.R` | Bayesian optimization of the pooled LightGBM hyperparameters for both models | `base_models/lightgbm/best_params.csv`, `tuning_results_*.csv` |
+| 5 | `base_models/lightgbm/train_lightgbm.R` | Trains the veg+meteo model | `base_models/lightgbm/results/` |
+| 5 | `base_models/lightgbm/train_lightgbm_no_veg.R` | Trains the meteo model | `base_models/lightgbm/results_no_veg/` |
+| 6 | `base_models/lightgbm/paper_visualizations.R` | Builds all paper figures | `base_models/lightgbm/results/paper_figures.pdf` |
+
+```sh
+cd all_code
+Rscript 1_data_organization.R
+Rscript 1b_static_features.R
+Rscript 2_feature_selection.R
+Rscript benchmarks/benchmark_climatology_model.R
+Rscript benchmarks/benchmark_persistence_model.R
+Rscript base_models/lightgbm/tune_lightgbm.R
+Rscript base_models/lightgbm/train_lightgbm.R
+Rscript base_models/lightgbm/train_lightgbm_no_veg.R
+Rscript base_models/lightgbm/paper_visualizations.R
+```
+
+`1_data_organization.R` and `2_feature_selection.R` each ask a question with
+`readline()`. Under `Rscript` the answer is empty, which selects the standard
+path used in the paper. Only an interactive answer of `Y`/`ALL` (step 1) or
+`edm` (step 2) builds the EDM variant.
+
+Step 1 is the slow one: it downloads Daymet for every station-year (about 300
+requests), then computes weather and MODIS windows for about 53,000 rows.
+Tuning (step 4) takes about 7 minutes for both models; everything else after
+step 2 finishes in a few minutes. Tuning only needs rerunning when the data or
+features change. Without `best_params.csv`, training falls back to default
+settings, but the paper results use the tuned settings.
+
+## Setup
+
+### Input data
+
+Scripts read raw inputs from `data/raw/`. That folder isn't stored here; in the
+original project it is a symlink to the project's `data/raw`. It needs:
+
+- `2023_data.csv`: daily pollen counts (uses the `Acer`, `Date` and `Station.ID` columns)
+- `station_locations.csv`: station `id`, `lat` and `lon`
+- `Pollen-Stations-v2-MOD13A1-061-results.csv`: MODIS Terra NDVI/EVI (AppEEARS export)
+- `asdf-MYD13A1-061-results.csv`: MODIS Aqua NDVI/EVI (AppEEARS export)
+
+### Network access
+
+- **Daymet** (step 1) through `daymetr::download_daymet`
+- **USGS Elevation Point Query Service** (step 1b) through `elevatr::get_elev_point(src = "epqs")`
+
+### R packages
+
+```r
+install.packages(c(
+  "dplyr", "tidyr", "tibble", "readr", "stringr", "lubridate", "janitor", "tidyverse",
+  "daymetr", "ptw", "imputeTS", "elevatr", "sf",
+  "lightgbm", "ggplot2", "ggpubr", "gridExtra", "scales", "usmap",
+  "rBayesianOptimization"   # tune_lightgbm.R
+))
+```
+
+`paper_visualizations.R` requires ggplot2 4.0 or newer because the map panel
+labels use `plot.tag.location`.
+
+## Method
+
+### Forecast setup
+
+- **Target:** daily *Acer* pollen smoothed with a Whittaker smoother
+  (`ptw::whit2`, λ = 50) within each station-year, modelled as `log(1 + Acer)`.
+  Predictions are converted back with a Duan smearing correction.
+- **Horizon:** every predictor window ends 7 days before the target day
+  (`FORECAST_BUFFER <- 7`).
+- **Split:** train 2003–2014, validation 2015–2017, test 2018–2022.
+
+### Features
+
+Both models use the same 25 features. The veg+meteo model adds 6 more (31 in
+total).
+
+| Group | Features |
+|---|---|
+| Pollen | `acer_lag_1week`, `acer_lag_1month`, `acer_lag_3month` (window means ending at t−7); `acer_lag_7d` (value at t−7, the persistence input); `acer_slope_7d` (t−7 minus t−14) |
+| Weather (Daymet) | `tmin`, `tmax`, `prcp`, `srad`, `vp` and `swe`, each as 1-week, 1-month and 3-month means ending at t−7 |
+| Static | `photoperiod`, `elevation_m` |
+| Vegetation (veg+meteo only) | `ndvi` and `evi`, each as 1-week, 1-month and 3-month means ending at t−7 (MODIS 16-day composites, gap-filled to daily) |
+
+When a station didn't sample exactly on day t−7 (or t−14), `acer_lag_7d` (and
+the t−14 value used for the slope) falls back to the most recent sample in the
+preceding week. `acer_slope_7d` may be missing; LightGBM handles that natively.
+
+### Models
+
+`POOLED <- TRUE` (the default in both training scripts) trains **one LightGBM
+model across all stations** with `lat`/`lon` as extra features.
+
+**Tuning.** `tune_lightgbm.R` runs Bayesian optimization (Gaussian-process
+surrogate, `rBayesianOptimization`, expected improvement). It uses the same
+search space, budget (10 random starting points + 30 guided steps) and seed for
+both models. Each candidate is scored by validation RMSE on 2015–2017 (log
+scale):
+
+| Parameter | Search range | veg+meteo | meteo |
+|---|---|---|---|
+| `num_leaves` | 8–255 | 85 | 25 |
+| `min_data_in_leaf` | 5–200 | 13 | 156 |
+| `feature_fraction` | 0.3–1.0 | 0.66 | 0.55 |
+| `bagging_fraction` | 0.5–1.0 | 0.84 | 0.97 |
+| `lambda_l1` | 10⁻³–10 (log) | 0.001 | 7.3 |
+| `lambda_l2` | 10⁻³–10 (log) | 0.086 | 0.036 |
+
+Fixed for both models: learning rate 0.05, bagging every 5 iterations.
+
+**Training.** Each script reads its model's `location == "pooled"` row from
+`best_params.csv`. It trains with early stopping on 2015–2017 (patience 100, up
+to 3,000 rounds) and averages predictions over 5 seeds. Without
+`best_params.csv` it falls back to 63 leaves, `min_data_in_leaf` 10, feature
+fraction 0.6 and bagging 0.8.
+
+With `POOLED <- FALSE` the scripts instead fit one model per station, using the
+hard-coded defaults in each script.
+
+### Benchmarks
+
+- **Climatology:** the mean log pollen for each station and day of year over
+  2003–2017.
+- **Persistence:** the smoothed value observed exactly 7 days earlier (14- and
+  30-day versions are also saved).
+
+Both are scored on the full test set.
+
+### Evaluation
+
+`paper_visualizations.R` scores all four models on **the same test rows**: rows
+that every model predicted, at stations with non-zero pollen. It prints the row
+count when it runs. Figures 1a and 2a report RMSE, MAE and R² on the
+`log1p` scale. The parity plots, time series and maps use grains/m³.
+
+## Results (last run)
+
+Test years 2018–2022, 7,358 shared rows, `log1p` scale:
+
+| Model | RMSE | MAE | R² |
+|---|---|---|---|
+| Climatology | 0.708 | 0.498 | 0.717 |
+| Persistence (7-day) | 0.595 | 0.399 | 0.800 |
+| LightGBM meteo | 0.416 | 0.221 | 0.902 |
+| **LightGBM veg+meteo** | **0.398** | **0.194** | **0.911** |
+
+On raw pollen counts, R² is 0.859 for veg+meteo and 0.784 for meteo. On
+pollen-season days (above 1 grain/m³), log R² is 0.759 and 0.744.
+
+Veg+meteo has the lower error at 9 of 14 active stations and in all 5 test
+years. It also has the lower log RMSE in 99% of 1,000 station-bootstrap
+resamples. Part of the gap comes from tuning: the meteo model's tuned settings
+did slightly better on validation but worse on the test years than its untuned
+defaults (test log RMSE 0.416 vs 0.403).
+
+## Known limitations
+
+- **Smoothing uses future data.** The Whittaker smoother is two-sided over each
+  station-year, so the smoothed value at t−7 includes information from later
+  days, including the target day. This affects the persistence benchmark and
+  the pollen lag features alike, and makes all scores somewhat optimistic
+  compared with a real-time 7-day forecast.
+- **Duplicate records.** Some stations have two records on the same date. They
+  stay as separate rows (the persistence lookup averages them).
+- **Web app.** The Shiny app (`Final Webapp.R`, outside this folder) expects one
+  model per station and the older feature set, so it needs updating before it
+  can load the pooled models.
+- **Leftover model files.** `saved_models/` folders may still contain per-station
+  `.model` files from earlier runs next to the current `pooled_seed*.model`
+  files. `model_metadata.rds` records which setup is current.

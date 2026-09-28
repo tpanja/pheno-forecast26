@@ -1,0 +1,21 @@
+# Model predictions
+base_models/lightgbm/results/train_predictions.csv
+base_models/lightgbm/results/validation_predictions.csv
+base_models/lightgbm/results/test_predictions.csv
+base_models/lightgbm/results_no_veg/train_predictions.csv
+base_models/lightgbm/results_no_veg/validation_predictions.csv
+base_models/lightgbm/results_no_veg/test_predictions.csv
+benchmarks/results/climatology/test_predictions.csv
+benchmarks/results/persistence/test_predictions.csv
+
+# Data: raw NAB pollen counts and processed inputs (see README for sources)
+data/
+
+# Trained models and data-derived outputs
+base_models/lightgbm/results*/saved_models/
+base_models/lightgbm/results/paper_figures.pdf
+benchmarks/results/climatology/climatology_model.csv
+
+# Local files
+.DS_Store
+pheno-forecast-2026/
