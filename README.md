@@ -87,10 +87,7 @@ total).
 
 ### Models
 
-`POOLED <- TRUE` (the default in both training scripts) trains **one LightGBM
-model across all stations** with `lat`/`lon` as extra features.
-
-**Tuning.** `tune_lightgbm.R` runs Bayesian optimization (Gaussian-process
+`tune_lightgbm.R` runs Bayesian optimization (Gaussian-process
 surrogate, `rBayesianOptimization`, expected improvement). It uses the same
 search space, budget (10 random starting points + 30 guided steps) and seed for
 both models. Each candidate is scored by validation RMSE on 2015–2017 (log
@@ -105,6 +102,25 @@ scale):
 | `lambda_l1` | 10⁻³–10 (log) | 0.001 | 7.3 |
 | `lambda_l2` | 10⁻³–10 (log) | 0.086 | 0.036 |
 
+| Parameter | LightGBM veg+meteo | LightGBM meteo |
+|---|---|---|
+| `num_leaves` | 53 | 229 |
+| `min_data_in_leaf` | 7 | 128 |
+| `feature_fraction` | 0.51 | 0.39 |
+| `bagging_fraction` | 0.96 | 0.98 |
+| `bagging_freq` | 5 | 5 |
+| `lambda_l1` | 0.007 | 10.0 |
+| `lambda_l2` | 7.8 | 0.059 |
+| `learning_rate` | 0.05 | 0.05 |
+| `max_depth` | −1 | −1 |
+| Rounds | early stopping on 2015–2017 (patience 100, up to 3,000) | early stopping on 2015–2017 (patience 100, up to 3,000) |
+| Trees per seed | 288–1,090 | 268–715 |
+| Seeds averaged | 5 | 5 |
+| Objective | regression (MSE) on log(1 + pollen) | regression (MSE) on log(1 + pollen) |
+| Predictors | 34 (26 shared + 6 NDVI/EVI + lat/lon) | 28 (26 shared + lat/lon) |
+| Validation RMSE (log, 2015–2017) | 0.441 | 0.453 |
+
+
 Fixed for both models: learning rate 0.05, bagging every 5 iterations.
 
 **Training.** Each script reads its model's `location == "pooled"` row from
@@ -118,21 +134,21 @@ hard-coded defaults in each script.
 
 ### Benchmarks
 
-- **Climatology:** the mean log pollen for each station and day of year over
+- Climatology: the mean log pollen for each station and day of year over
   2003–2017.
-- **Persistence:** the smoothed value observed exactly 7 days earlier (14- and
+- Persistence: the smoothed value observed exactly 7 days earlier (14- and
   30-day versions are also saved).
 
 Both are scored on the full test set.
 
 ### Evaluation
 
-`paper_visualizations.R` scores all four models on **the same test rows**: rows
+`paper_visualizations.R` scores all four models on the same test rows: rows
 that every model predicted, at stations with non-zero pollen. It prints the row
 count when it runs. Figures 1a and 2a report RMSE, MAE and R² on the
 `log1p` scale. The parity plots, time series and maps use grains/m³.
 
-## Results (last run)
+## Results
 
 Test years 2018–2022, 7,358 shared rows. Raw scale in grains/m³, log scale is
 `log1p`:
