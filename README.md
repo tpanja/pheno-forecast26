@@ -1,12 +1,9 @@
 # Spatiotemporal Acer Pollen Forecasting
 
 Code for the paper's 7-day-ahead forecasts of maple (*Acer*) pollen at 15 US
-stations. It compares two LightGBM models, **veg+meteo** (weather + MODIS
-NDVI/EVI) and **meteo** (weather only), against two benchmarks: climatology and
+stations. It compares two LightGBM models, veg+meteo (weather + MODIS
+NDVI/EVI) and meteo (weather only), against two benchmarks: climatology and
 7-day persistence.
-
-All scripts are R and use paths relative to this folder, so **run every script
-with `all_code/` as the working directory**.
 
 ## Pipeline
 
@@ -14,7 +11,7 @@ Run the steps in this order:
 
 | Step | Script | What it does | Main outputs |
 |---|---|---|---|
-| 1 | `1_data_organization.R` | Smooths daily pollen, downloads Daymet weather, loads MODIS NDVI/EVI and builds lagged features with a 7-day forecast buffer | `data/processed/pollen_weather_smoothed.csv`, `cache_*.rds` |
+| 1 | `1_data_organization.R` | Smooths daily pollen, downloads Daymet weather, loads MODIS NDVI/EVI and builds lagged features with a 7-day forecast buffer | `data/processed/pollen_weather_smoothed.csv` |
 | 1b | `1b_static_features.R` | Adds station elevation | updates `pollen_weather_smoothed.csv`, `station_static_features.csv` |
 | 2 | `2_feature_selection.R` | Log-transforms the target and splits by year | `data/processed/train_data_base.csv` (2003–2017), `test_data_base.csv` (2018–2022) |
 | 3 | `benchmarks/benchmark_climatology_model.R` | Day-of-year climatology benchmark | `benchmarks/results/climatology/` |
@@ -37,24 +34,12 @@ Rscript base_models/lightgbm/train_lightgbm_no_veg.R
 Rscript base_models/lightgbm/paper_visualizations.R
 ```
 
-`1_data_organization.R` and `2_feature_selection.R` each ask a question with
-`readline()`. Under `Rscript` the answer is empty, which selects the standard
-path used in the paper. Only an interactive answer of `Y`/`ALL` (step 1) or
-`edm` (step 2) builds the EDM variant.
-
-Step 1 is the slow one: it downloads Daymet for every station-year (about 300
-requests), then computes weather and MODIS windows for about 53,000 rows.
-Tuning (step 4) takes about 7 minutes for both models; everything else after
-step 2 finishes in a few minutes. Tuning only needs rerunning when the data or
-features change. Without `best_params.csv`, training falls back to default
-settings, but the paper results use the tuned settings.
-
 ## Setup
 
 ### Input data
 
 Scripts read raw inputs from `data/raw/`. That folder isn't stored here; in the
-original project it is a symlink to the project's `data/raw`. It needs:
+original project it is a symlink to the project's `data/raw`
 
 - `2023_data.csv`: daily pollen counts (uses the `Acer`, `Date` and `Station.ID` columns)
 - `station_locations.csv`: station `id`, `lat` and `lon`
@@ -76,9 +61,6 @@ install.packages(c(
   "rBayesianOptimization"   # tune_lightgbm.R
 ))
 ```
-
-`paper_visualizations.R` requires ggplot2 4.0 or newer because the map panel
-labels use `plot.tag.location`.
 
 ## Method
 
@@ -102,19 +84,6 @@ total).
 | Weather (Daymet) | `tmin`, `tmax`, `prcp`, `srad`, `vp` and `swe`, each as 1-week, 1-month and 3-month means ending at t−7 |
 | Static | `photoperiod`, `elevation_m` |
 | Vegetation (veg+meteo only) | `ndvi` and `evi`, each as 1-week, 1-month and 3-month means ending at t−7 (MODIS 16-day composites, gap-filled to daily) |
-
-When a station didn't sample exactly on day t−7, `acer_lag_7d` falls back to
-the most recent sample in the preceding week (t−14 to t−7, same-day records
-averaged). The t−14 value used for the slope falls back the same way (t−21 to
-t−14). Every value still comes from day t−7 or earlier, so the fallback uses
-only information available when the forecast is made. The fallback applies to
-about 9% of rows (8% of training rows, 13% of test rows), and on those rows the
-value can be up to 14 days old. `acer_slope_7d` is missing for about 2% of
-rows; LightGBM handles that natively, so those rows are kept.
-
-The persistence benchmark has no fallback (it needs a sample exactly on t−7),
-and the scoring rows are the days all four models can forecast. On those days
-`acer_lag_7d` is the exact t−7 value.
 
 ### Models
 
@@ -183,34 +152,5 @@ years. It also has the lower log RMSE in 99% of 1,000 station-bootstrap
 resamples. Part of the gap comes from tuning: the meteo model's tuned settings
 did slightly better on validation but worse on the test years than its untuned
 defaults (test log RMSE 0.416 vs 0.403).
-
-## Known limitations
-
-- **Smoothing uses future data.** The Whittaker smoother is two-sided over each
-  station-year, so the smoothed value at t−7 includes information from later
-  days, including the target day. This affects the persistence benchmark and
-  the pollen lag features alike, and makes all scores somewhat optimistic
-  compared with a real-time 7-day forecast.
-- **Duplicate records.** Two pairs of NAB stations share coordinates (two in
-  Waco, TX and two in Colorado Springs, CO), so those locations have two
-  records on some dates. They stay as separate rows; the persistence lookup and
-  `acer_lag_7d` average them.
-- **Stale t−7 values.** On rows that use the fallback, `acer_lag_7d` can be up to
-  14 days old and the model isn't told its age. A "days since sample" feature
-  would let it tell fresh and stale values apart.
-- **Elevation lookups can fail silently.** If the USGS service returns no value
-  for a station in step 1b, `elevation_m` is `NA` and step 2 drops all of that
-  station's rows without an error. Check that `station_static_features.csv` has
-  no missing values (and that train/test have 43,457 and 8,954 rows) before
-  training.
-- **Tuning can stop with an optimizer error.** `rBayesianOptimization`'s
-  Gaussian-process fit occasionally fails with "non-finite value supplied by
-  optim". The tuner uses a fixed seed, so rerunning it on the same data fails
-  the same way; change the `set.seed()` before `BayesianOptimization()` to get
-  past it.
-- **Web app.** The Shiny app (`Final Webapp.R`, outside this folder) expects one
-  model per station and the older feature set, so it needs updating before it
-  can load the pooled models.
-- **Leftover model files.** `saved_models/` folders may still contain per-station
   `.model` files from earlier runs next to the current `pooled_seed*.model`
   files. `model_metadata.rds` records which setup is current.
