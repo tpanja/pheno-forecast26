@@ -95,12 +95,12 @@ scale):
 
 | Parameter | Search range | veg+meteo | meteo |
 |---|---|---|---|
-| `num_leaves` | 8–255 | 85 | 25 |
-| `min_data_in_leaf` | 5–200 | 13 | 156 |
-| `feature_fraction` | 0.3–1.0 | 0.66 | 0.55 |
-| `bagging_fraction` | 0.5–1.0 | 0.84 | 0.97 |
-| `lambda_l1` | 10⁻³–10 (log) | 0.001 | 7.3 |
-| `lambda_l2` | 10⁻³–10 (log) | 0.086 | 0.036 |
+| `num_leaves` | 8–255 | 53 | 229 |
+| `min_data_in_leaf` | 5–200 | 7 | 128 |
+| `feature_fraction` | 0.3–1.0 | 0.51 | 0.39 |
+| `bagging_fraction` | 0.5–1.0 | 0.96 | 0.98 |
+| `lambda_l1` | 10⁻³–10 (log) | 0.007 | 10.0 |
+| `lambda_l2` | 10⁻³–10 (log) | 7.8 | 0.059 |
 
 | Parameter | LightGBM veg+meteo | LightGBM meteo |
 |---|---|---|
@@ -150,23 +150,26 @@ count when it runs. Figures 1a and 2a report RMSE, MAE and R² on the
 
 ## Results
 
-Test years 2018–2022, 7,358 shared rows. Raw scale in grains/m³, log scale is
-`log1p`:
+Test years 2018–2022, 7,358 shared rows. RMSE and MAE in grains/m³:
 
-| Model | RMSE | MAE | R² | log RMSE | log MAE | log R² |
-|---|---|---|---|---|---|---|
-| **LightGBM veg+meteo** | **14.01** | **3.31** | **0.859** | **0.398** | **0.194** | **0.911** |
-| LightGBM meteo | 17.36 | 3.96 | 0.784 | 0.416 | 0.221 | 0.902 |
-| Climatology | 36.15 | 7.37 | 0.063 | 0.708 | 0.498 | 0.717 |
-| Persistence (7-day) | 23.86 | 6.07 | 0.592 | 0.595 | 0.399 | 0.800 |
+| Model | RMSE | MAE | R² |
+|---|---|---|---|
+| **LightGBM veg+meteo** | **15.23** | **3.50** | **0.834** |
+| LightGBM meteo | 16.49 | 3.82 | 0.805 |
+| Climatology | 36.15 | 7.37 | 0.063 |
+| Persistence (7-day) | 23.86 | 6.07 | 0.592 |
 
-On pollen-season days (above 1 grain/m³), log R² is 0.759 for veg+meteo and
-0.744 for meteo.
+On pollen-season days (above 1 grain/m³), R² is 0.804 for veg+meteo and 0.770
+for meteo.
 
-Veg+meteo has the lower error at 9 of 14 active stations and in all 5 test
-years. It also has the lower log RMSE in 99% of 1,000 station-bootstrap
-resamples. Part of the gap comes from tuning: the meteo model's tuned settings
-did slightly better on validation but worse on the test years than its untuned
-defaults (test log RMSE 0.416 vs 0.403).
-  `.model` files from earlier runs next to the current `pooled_seed*.model`
-  files. `model_metadata.rds` records which setup is current.
+Veg+meteo has the lower error at 13 of 14 active stations and in 4 of 5 test
+years, and the lower RMSE in all 1,000 station-bootstrap resamples.
+
+Veg+meteo performance by station (raw scale), best and worst:
+
+| Station | R² | RMSE | MAE |
+|---|---|---|---|
+| Mount Laurel, NJ | 0.917 | 3.15 | 1.18 |
+| Waco, TX | 0.887 | 15.61 | 6.55 |
+| Marietta, GA | 0.358 | 4.99 | 1.06 |
+| Waterbury, CT | −0.804 | 20.33 | 5.25 |
