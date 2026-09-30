@@ -75,12 +75,12 @@ install.packages(c(
 
 ### Features
 
-Both models use the same 25 features. The veg+meteo model adds 6 more (31 in
+Both models use the same 26 features. The veg+meteo model adds 6 more (32 in
 total).
 
 | Group | Features |
 |---|---|
-| Pollen | `acer_lag_1week`, `acer_lag_1month`, `acer_lag_3month` (window means ending at t−7); `acer_lag_7d` (value at t−7, the persistence input); `acer_slope_7d` (t−7 minus t−14) |
+| Pollen | `acer_lag_1week`, `acer_lag_1month`, `acer_lag_3month` (window means ending at t−7); `acer_lag_7d` (value at t−7, the persistence input); `acer_lag_7d_days_back` (days between t−7 and the sample used for `acer_lag_7d`: 0 if one exists exactly on t−7, 1 if the nearest is t−8, up to 7); `acer_slope_7d` (t−7 minus t−14) |
 | Weather (Daymet) | `tmin`, `tmax`, `prcp`, `srad`, `vp` and `swe`, each as 1-week, 1-month and 3-month means ending at t−7 |
 | Static | `photoperiod`, `elevation_m` |
 | Vegetation (veg+meteo only) | `ndvi` and `evi`, each as 1-week, 1-month and 3-month means ending at t−7 (MODIS 16-day composites, gap-filled to daily) |
