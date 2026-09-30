@@ -103,9 +103,18 @@ total).
 | Static | `photoperiod`, `elevation_m` |
 | Vegetation (veg+meteo only) | `ndvi` and `evi`, each as 1-week, 1-month and 3-month means ending at t−7 (MODIS 16-day composites, gap-filled to daily) |
 
-When a station didn't sample exactly on day t−7 (or t−14), `acer_lag_7d` (and
-the t−14 value used for the slope) falls back to the most recent sample in the
-preceding week. `acer_slope_7d` may be missing; LightGBM handles that natively.
+When a station didn't sample exactly on day t−7, `acer_lag_7d` falls back to
+the most recent sample in the preceding week (t−14 to t−7, same-day records
+averaged). The t−14 value used for the slope falls back the same way (t−21 to
+t−14). Every value still comes from day t−7 or earlier, so the fallback uses
+only information available when the forecast is made. The fallback applies to
+about 9% of rows (8% of training rows, 13% of test rows), and on those rows the
+value can be up to 14 days old. `acer_slope_7d` is missing for about 2% of
+rows; LightGBM handles that natively, so those rows are kept.
+
+The persistence benchmark has no fallback (it needs a sample exactly on t−7),
+and the scoring rows are the days all four models can forecast. On those days
+`acer_lag_7d` is the exact t−7 value.
 
 ### Models
 
@@ -156,17 +165,18 @@ count when it runs. Figures 1a and 2a report RMSE, MAE and R² on the
 
 ## Results (last run)
 
-Test years 2018–2022, 7,358 shared rows, `log1p` scale:
+Test years 2018–2022, 7,358 shared rows. Raw scale in grains/m³, log scale is
+`log1p`:
 
-| Model | RMSE | MAE | R² |
-|---|---|---|---|
-| Climatology | 0.708 | 0.498 | 0.717 |
-| Persistence (7-day) | 0.595 | 0.399 | 0.800 |
-| LightGBM meteo | 0.416 | 0.221 | 0.902 |
-| **LightGBM veg+meteo** | **0.398** | **0.194** | **0.911** |
+| Model | RMSE | MAE | R² | log RMSE | log MAE | log R² |
+|---|---|---|---|---|---|---|
+| **LightGBM veg+meteo** | **14.01** | **3.31** | **0.859** | **0.398** | **0.194** | **0.911** |
+| LightGBM meteo | 17.36 | 3.96 | 0.784 | 0.416 | 0.221 | 0.902 |
+| Climatology | 36.15 | 7.37 | 0.063 | 0.708 | 0.498 | 0.717 |
+| Persistence (7-day) | 23.86 | 6.07 | 0.592 | 0.595 | 0.399 | 0.800 |
 
-On raw pollen counts, R² is 0.859 for veg+meteo and 0.784 for meteo. On
-pollen-season days (above 1 grain/m³), log R² is 0.759 and 0.744.
+On pollen-season days (above 1 grain/m³), log R² is 0.759 for veg+meteo and
+0.744 for meteo.
 
 Veg+meteo has the lower error at 9 of 14 active stations and in all 5 test
 years. It also has the lower log RMSE in 99% of 1,000 station-bootstrap
@@ -181,8 +191,23 @@ defaults (test log RMSE 0.416 vs 0.403).
   days, including the target day. This affects the persistence benchmark and
   the pollen lag features alike, and makes all scores somewhat optimistic
   compared with a real-time 7-day forecast.
-- **Duplicate records.** Some stations have two records on the same date. They
-  stay as separate rows (the persistence lookup averages them).
+- **Duplicate records.** Two pairs of NAB stations share coordinates (two in
+  Waco, TX and two in Colorado Springs, CO), so those locations have two
+  records on some dates. They stay as separate rows; the persistence lookup and
+  `acer_lag_7d` average them.
+- **Stale t−7 values.** On rows that use the fallback, `acer_lag_7d` can be up to
+  14 days old and the model isn't told its age. A "days since sample" feature
+  would let it tell fresh and stale values apart.
+- **Elevation lookups can fail silently.** If the USGS service returns no value
+  for a station in step 1b, `elevation_m` is `NA` and step 2 drops all of that
+  station's rows without an error. Check that `station_static_features.csv` has
+  no missing values (and that train/test have 43,457 and 8,954 rows) before
+  training.
+- **Tuning can stop with an optimizer error.** `rBayesianOptimization`'s
+  Gaussian-process fit occasionally fails with "non-finite value supplied by
+  optim". The tuner uses a fixed seed, so rerunning it on the same data fails
+  the same way; change the `set.seed()` before `BayesianOptimization()` to get
+  past it.
 - **Web app.** The Shiny app (`Final Webapp.R`, outside this folder) expects one
   model per station and the older feature set, so it needs updating before it
   can load the pooled models.
