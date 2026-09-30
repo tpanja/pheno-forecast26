@@ -14,8 +14,6 @@ if (input_file == "edm") {
     select(-any_of(c("acer_orig"))) %>%
     na.omit()
 } else {
-   # acer_slope_7d is NA when there is no sample in the week before t-14; LightGBM
-   # handles missing values natively, so keep those rows
    df <- read.csv("data/processed/pollen_weather_smoothed.csv") %>%
     clean_names() %>%
     select(-any_of(c("acer_orig"))) %>%

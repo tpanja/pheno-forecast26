@@ -22,20 +22,12 @@ bagging_fraction <- 0.8
 bagging_freq <- 5
 num_iterations <- 200
 
-# Pooled mode: one model for all stations with lat/lon as features, early
-# stopping on 2015-2017 and predictions averaged over POOLED_SEEDS seeds. These
-# settings are identical in train_lightgbm.R and train_lightgbm_no_veg.R, so the
-# two models differ only in the NDVI/EVI features. POOLED <- FALSE trains the
-# per-station models below instead
 POOLED <- TRUE
 POOLED_SEEDS <- 5
 POOLED_MAX_ROUNDS <- 3000
 POOLED_EARLY_STOP <- 100
 pooled_params <- list(objective = "regression", metric = "rmse", num_leaves = 63, learning_rate = 0.05, max_depth = -1, min_data_in_leaf = 10, feature_fraction = 0.6, bagging_fraction = 0.8, bagging_freq = 5, lambda_l1 = 0, lambda_l2 = 0, verbosity = -1)
 
-# Tuned hyperparameters from tune_lightgbm.R (best_params.csv). Rows with
-# location == "pooled" configure pooled mode; per-station mode uses rows matching
-# each station and falls back to the defaults above
 TUNED_MODEL <- "meteo-only"
 tuned_file <- "base_models/lightgbm/best_params.csv"
 tuned_params <- if (file.exists(tuned_file)) dplyr::filter(readr::read_csv(tuned_file, show_col_types = FALSE), model == TUNED_MODEL) else NULL
@@ -84,8 +76,6 @@ predict_lgb <- function(model_obj, data, predictors) predict(model_obj$model, as
 model_list <- list(); imp_list <- list(); smearing_factors <- list(); params_used <- list()
 
 if (POOLED) {
-  # Bayesian-optimized pooled settings from tune_lightgbm.R (same search for both
-  # models); the defaults above are used if tuning has not been run
   tuned_pooled <- if (!is.null(tuned_params)) dplyr::filter(tuned_params, location == "pooled") else NULL
   pooled_is_tuned <- !is.null(tuned_pooled) && nrow(tuned_pooled) > 0
   if (pooled_is_tuned) {
@@ -105,7 +95,6 @@ if (POOLED) {
     params_used[[key]] <- tibble::as_tibble(pooled_params[c("num_leaves", "learning_rate", "min_data_in_leaf", "feature_fraction", "bagging_fraction", "bagging_freq", "lambda_l1", "lambda_l2")]) %>%
       dplyr::mutate(location = "pooled", tuned = pooled_is_tuned, seed = s, num_iterations = m$best_iter)
   }
-  # predict() uses each model's best (early-stopped) iteration
   predict_pooled <- function(d) Reduce(`+`, lapply(model_list, function(mo) predict(mo$model, X_of(d)))) / length(model_list)
   train_preds_log <- predict_pooled(train_data)
   global_smearing_factor <- mean(exp(train_data$Acer - train_preds_log), na.rm = TRUE)
@@ -178,7 +167,6 @@ overall_rmse <- rmse_fun(preds_df$predicted, preds_df$actual)
 overall_mae <- mae_fun(preds_df$predicted, preds_df$actual)
 overall_r2 <- r2_fun(preds_df$predicted, preds_df$actual)
 
-# Hyperparameters actually used by each station's model (tuned or defaults)
 if (has_location && length(params_used) > 0) {
   best_model_params <- dplyr::bind_rows(params_used) %>%
     dplyr::mutate(max_depth = max_depth, loss_function = "regression (MSE)", duan_smearing_factor = unlist(smearing_factors[location])) %>%

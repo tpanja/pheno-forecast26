@@ -6,11 +6,6 @@ suppressPackageStartupMessages({
   library(rBayesianOptimization)
 })
 
-# Bayesian optimization (Gaussian-process surrogate, rBayesianOptimization) of the
-# pooled LightGBM model used by train_lightgbm.R / train_lightgbm_no_veg.R.
-# Both feature sets get the same search space, budget and seed; each candidate is
-# scored by validation RMSE (log scale, 2015-2017) with early stopping choosing the
-# number of rounds.
 
 OUTPUT_DIR <- "base_models/lightgbm"
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
@@ -20,7 +15,6 @@ all_train <- read_csv("data/processed/train_data_base.csv", show_col_types = FAL
 train_pool <- all_train %>% filter(year <= 2014)
 val_pool   <- all_train %>% filter(year >= 2015, year <= 2017)
 
-# Pooled model: station identity enters through lat/lon
 base_exclude <- c("date", "Acer", "year", "doy")
 pred_veg    <- setdiff(names(train_pool), base_exclude)
 pred_noveg  <- pred_veg[!grepl("evi|ndvi", pred_veg, ignore.case = TRUE)]
@@ -31,7 +25,6 @@ EARLY_STOP    <- 100L
 INIT_POINTS   <- 10L
 N_ITER        <- 30L
 
-# lambda_l1 / lambda_l2 are searched on a log10 scale
 bounds <- list(
   num_leaves       = c(8L, 255L),
   min_data_in_leaf = c(5L, 200L),
@@ -58,12 +51,10 @@ run_bayes_opt <- function(predictors, model_label) {
                        log10_lambda_l1, log10_lambda_l2) {
     params <- make_params(num_leaves, min_data_in_leaf, feature_fraction, bagging_fraction,
                           log10_lambda_l1, log10_lambda_l2)
-    # Datasets are rebuilt per candidate because min_data_in_leaf affects binning
     dtrain <- lgb.Dataset(X_train, label = train_pool$Acer, params = list(feature_pre_filter = FALSE))
     dval   <- lgb.Dataset(X_val, label = val_pool$Acer, reference = dtrain)
     m <- lgb.train(params, dtrain, nrounds = MAX_ROUNDS, valids = list(val = dval),
                    early_stopping_rounds = EARLY_STOP, verbose = -1)
-    # rBayesianOptimization maximizes, so return negative validation RMSE
     list(Score = -m$best_score, Pred = m$best_iter)
   }
 

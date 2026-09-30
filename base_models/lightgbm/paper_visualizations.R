@@ -55,8 +55,6 @@ active_locs <- lgb_preds %>%
   summarise(nonzero = sum(actual > 0, na.rm = TRUE), .groups = "drop") %>%
   filter(nonzero > 0)
 
-# Score every model on the same rows: keep only test rows (at active locations)
-# that all four models produced a prediction for
 key_cols <- c("lat", "lon", "year", "doy")
 common_keys <- list(lgb_preds, lgb_noveg_preds, clim_preds, pers_preds) %>%
   lapply(function(df) distinct(df, across(all_of(key_cols)))) %>%
@@ -169,7 +167,6 @@ r2_medians <- metrics_combined %>%
     (Model == "LightGBM_veg+meteo" & aggregation == "by year") |
     (Model == "Persistence (7-day)" & aggregation == "by year"), 1.5, -0.5
   ),
-  # LightGBM_meteo by-year median sits inside a crowded box: print it above the whisker instead
   label_y = ifelse(Model == "LightGBM_meteo" & aggregation == "by year", whisker_top, y))
 
 p_r2 <- ggplot(metrics_combined %>% filter(!is.na(R2), R2 > -200), aes(x = Model, y = R2, fill = aggregation)) +
@@ -187,7 +184,6 @@ p_r2 <- ggplot(metrics_combined %>% filter(!is.na(R2), R2 > -200), aes(x = Model
         legend.position = "top",
         plot.margin = ggplot2::margin(t = 5, r = 5, b = 5, l = 15))
 
-# Centered panel titles leave the top-left corner free for the A/B/C labels
 center_title <- theme(plot.title = element_text(hjust = 0.5))
 p_fig1a <- ggarrange(p_rmse + center_title, p_mae + center_title, p_r2 + center_title,
                      ncol = 3, nrow = 1, common.legend = TRUE, legend = "top", labels = c("A", "B", "C"), label.x = 0.10)
@@ -213,7 +209,6 @@ parity_lim <- range(c(all_preds$actual, all_preds$predicted), na.rm = TRUE)
 label_x    <- parity_lim[1] + 0.02 * diff(parity_lim)
 label_y    <- parity_lim[2] - 0.05 * diff(parity_lim)
 
-# One panel per model (same axes) so each can carry an A-D label
 parity_sample <- all_preds %>% sample_frac(0.5)
 parity_panel <- function(model_name) {
   ggplot(filter(parity_sample, Model == model_name), aes(x = actual, y = predicted)) +
@@ -312,7 +307,6 @@ ts_metrics <- sample_ts %>%
   ) %>%
   mutate(metric_label = sprintf("R² = %.3f\nRMSE = %.1f\nMAE = %.1f", R2, RMSE, MAE))
 
-# One panel per sample location (own y scale) so each can carry an A/B/C label
 ts_panel <- function(loc) {
   ggplot(filter(sample_ts, location_label == loc), aes(x = doy)) +
     geom_point(aes(y = actual, color = "Observed"), size = 1.5, alpha = 0.8) +
@@ -320,7 +314,6 @@ ts_panel <- function(loc) {
     geom_text(data = filter(ts_metrics, location_label == loc), aes(x = Inf, y = Inf, label = metric_label),
               inherit.aes = FALSE, hjust = 1.05, vjust = 1.2, size = 3.2, fontface = "plain") +
     scale_color_manual(values = c("Observed" = "black", "Predicted" = "red"), name = "") +
-    # Same day-of-year range in every panel so the x axes line up
     coord_cartesian(xlim = c(1, 366)) +
     scale_x_continuous(breaks = c(1, 100, 200, 300, 366)) +
     labs(title = loc, x = "Day of Year", y = "Pollen (grains/m³)") +
@@ -328,7 +321,6 @@ ts_panel <- function(loc) {
     theme(plot.title = element_text(face = "bold", size = 11, hjust = 0.5))
 }
 ts_locations <- sort(unique(sample_ts$location_label))
-# align = "v" lines up the panels even though their y tick labels differ in width
 p_fig2c <- ggarrange(plotlist = lapply(ts_locations, ts_panel), ncol = 1, align = "v",
                      labels = LETTERS[seq_along(ts_locations)], label.x = 0.03, common.legend = TRUE, legend = "bottom")
 p_fig2c <- annotate_figure(p_fig2c,
@@ -579,8 +571,6 @@ p_map_mae_small <- plot_usmap(exclude = c("AK", "HI"), fill = "grey90", color = 
                     legend.key.size = unit(0.4, "cm"), legend.text = element_text(size = 7),
                     legend.title = element_text(size = 8))
 
-# Tags anchored just outside each map's top-left corner (the fixed-aspect maps
-# leave empty space in their cells, so ggarrange's cell-corner labels float away)
 map_tag <- function(letter) {
   list(labs(tag = letter),
        theme(plot.tag.location = "panel", plot.tag.position = c(0, 1),

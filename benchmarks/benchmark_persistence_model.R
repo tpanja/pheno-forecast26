@@ -11,7 +11,6 @@ set.seed(42)
 OUTPUT_DIR <- "benchmarks/results/persistence"
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
-# Same train/test files as LightGBM, full test set, so every model is scored on the same rows
 train_data <- read_csv("data/processed/train_data_base.csv", show_col_types = FALSE)
 test_data_full <- read_csv("data/processed/test_data_base.csv", show_col_types = FALSE)
 
@@ -31,7 +30,6 @@ r2_fun <- function(pred, actual) {
   1 - (ss_res / ss_tot)
 }
 
-# One value per location-date (duplicate records averaged) so the lag join can't multiply rows
 all_data <- bind_rows(train_data, test_data_full) %>%
   group_by(lat, lon, date) %>%
   summarise(Acer = mean(Acer), .groups = "drop")

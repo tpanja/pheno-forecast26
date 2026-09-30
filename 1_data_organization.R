@@ -60,8 +60,6 @@ df_smoothed <- df_min_per_year %>%
 
 saveRDS(df_smoothed, "data/processed/cache_df_smoothed.rds")
 
-# Smoothed Acer on `target` (same-day duplicates averaged); if the station did
-# not sample that day, the most recent value within the preceding `max_back` days
 acer_on_date <- function(dates, values, target, max_back = LAG_1WEEK) {
   idx <- which(dates <= target & dates >= target - max_back & !is.na(values))
   if (length(idx) == 0) return(NA_real_)
@@ -105,8 +103,6 @@ df_filtered_lags <- df_smoothed %>%
       } else NA_real_
     }),
 
-    # Point value at t - FORECAST_BUFFER (the persistence forecast input) and its
-    # change over the preceding week
     Acer_lag_7d = sapply(seq_len(n()), function(i) {
       acer_on_date(date_idx, Acer_smooth, date_idx[i] - FORECAST_BUFFER)
     }),

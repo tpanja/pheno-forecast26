@@ -8,7 +8,6 @@ set.seed(42)
 OUTPUT_DIR <- "benchmarks/results/climatology"
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
-# Same train/test files as LightGBM, full test set, so every model is scored on the same rows
 train_data <- read_csv("data/processed/train_data_base.csv", show_col_types = FALSE)
 test_data_full <- read_csv("data/processed/test_data_base.csv", show_col_types = FALSE)
 
