@@ -19,3 +19,6 @@ benchmarks/results/climatology/climatology_model.csv
 # Local files
 .DS_Store
 pheno-forecast-2026/
+
+# PDFs (figures and reports) are kept locally only
+*.pdf
