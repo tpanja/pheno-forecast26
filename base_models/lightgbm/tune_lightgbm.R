@@ -58,9 +58,16 @@ run_bayes_opt <- function(predictors, model_label) {
     list(Score = -m$best_score, Pred = m$best_iter)
   }
 
-  set.seed(42)
-  opt <- BayesianOptimization(score_fn, bounds = bounds, init_points = INIT_POINTS, n_iter = N_ITER,
-                              acq = "ei", eps = 0.0, verbose = FALSE)
+  opt <- NULL
+  for (seed in 42:46) {
+    set.seed(seed)
+    opt <- tryCatch(
+      BayesianOptimization(score_fn, bounds = bounds, init_points = INIT_POINTS, n_iter = N_ITER,
+                           acq = "ei", eps = 0.0, verbose = FALSE),
+      error = function(e) { message(sprintf("%s: optimizer failed with seed %d (%s), retrying", model_label, seed, conditionMessage(e))); NULL })
+    if (!is.null(opt)) break
+  }
+  if (is.null(opt)) stop(model_label, ": Bayesian optimization failed for all seeds")
 
   history <- opt$History %>%
     mutate(val_rmse = -Value, num_iterations = as.integer(unlist(opt$Pred)), model = model_label) %>%

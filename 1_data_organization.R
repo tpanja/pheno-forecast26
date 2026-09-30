@@ -67,6 +67,12 @@ acer_on_date <- function(dates, values, target, max_back = LAG_1WEEK) {
   mean(values[idx][dates[idx] == latest])
 }
 
+acer_days_back <- function(dates, values, target, max_back = LAG_1WEEK) {
+  idx <- which(dates <= target & dates >= target - max_back & !is.na(values))
+  if (length(idx) == 0) return(NA_real_)
+  as.numeric(target - max(dates[idx]))
+}
+
 df_filtered_lags <- df_smoothed %>%
   group_by(lat, lon) %>%
   arrange(lat, lon, year, doy) %>%
@@ -105,6 +111,10 @@ df_filtered_lags <- df_smoothed %>%
 
     Acer_lag_7d = sapply(seq_len(n()), function(i) {
       acer_on_date(date_idx, Acer_smooth, date_idx[i] - FORECAST_BUFFER)
+    }),
+
+    Acer_lag_7d_days_back = sapply(seq_len(n()), function(i) {
+      acer_days_back(date_idx, Acer_smooth, date_idx[i] - FORECAST_BUFFER)
     }),
 
     Acer_slope_7d = Acer_lag_7d - sapply(seq_len(n()), function(i) {
